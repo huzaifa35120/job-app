@@ -18,6 +18,9 @@ const OPERATIONS: Record<string, string> = {
   web_search: "Web search",
   score_jobs: "Matching",
   write_documents: "Resume and cover letter",
+  write_resume: "Resume rewrite",
+  write_cover_letter: "Cover letter rewrite",
+  fill_form: "Form filling",
   answer_questions: "Application answers",
   import_resume: "Resume import",
 };

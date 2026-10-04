@@ -33,6 +33,8 @@ export interface JobRow {
   cover_letter: any;
   doc_notes: any;
   docs_generated_at: string | null;
+  resume_at: string | null;
+  cover_at: string | null;
   answers: any;
 }
 

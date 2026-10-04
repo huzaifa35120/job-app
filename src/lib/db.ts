@@ -58,6 +58,8 @@ const SCHEMA = [
    )`,
   `CREATE INDEX IF NOT EXISTS jobs_dedupe_idx ON jobs (dedupe_key)`,
   `CREATE INDEX IF NOT EXISTS jobs_score_idx ON jobs (score DESC NULLS LAST)`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS resume_at TIMESTAMPTZ`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cover_at TIMESTAMPTZ`,
   `CREATE TABLE IF NOT EXISTS usage_log (
      id SERIAL PRIMARY KEY,
      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

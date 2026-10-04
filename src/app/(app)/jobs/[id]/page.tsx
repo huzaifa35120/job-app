@@ -193,7 +193,29 @@ export default function JobPage() {
 
   const job = data.job;
   const description: string = job.full_description || job.description;
-  const hasDocs = Boolean(job.resume);
+  const hasResume = Boolean(job.resume);
+  const hasLetter = Boolean(job.cover_letter);
+  const hasDocs = hasResume || hasLetter;
+  // Your profile changed after this document was written, so it may be missing your updates.
+  const profileAt = data.profileUpdatedAt ? Date.parse(data.profileUpdatedAt) : 0;
+  const resumeAt = Date.parse(job.resume_at ?? job.docs_generated_at ?? "") || 0;
+  const letterAt = Date.parse(job.cover_at ?? job.docs_generated_at ?? "") || 0;
+  const resumeStale = hasResume && profileAt > resumeAt + 1000;
+  const letterStale = hasLetter && profileAt > letterAt + 1000;
+
+  async function write(which: "both" | "resume" | "cover") {
+    const what = which === "both" ? "resume and cover letter" : which === "resume" ? "resume" : "cover letter";
+    const exists = which === "both" ? hasDocs : which === "resume" ? hasResume : hasLetter;
+    if (exists && !confirm(`Write a new ${what} from your current profile? It replaces the current one, including any edits you made to it.`)) return;
+    const done = `${what.charAt(0).toUpperCase()}${what.slice(1)} ${exists ? "rewritten" : "written"}`;
+    await act(() => api(`/api/jobs/${id}/generate`, { method: "POST", json: { which } }), done);
+  }
+
+  const staleNotice = (what: string) => (
+    <Alert tone="info">
+      You&apos;ve updated your profile since this {what} was written. Rewrite it to include your changes.
+    </Alert>
+  );
 
   return (
     <>
@@ -253,13 +275,9 @@ export default function JobPage() {
             <div className="section-head">
               <div>
                 <h2 className="section-title">Resume and cover letter</h2>
-                <p className="section-sub">Written only from your profile. Usually $0.05 to $0.20.</p>
+                <p className="section-sub">Written only from your profile. Both together cost about $0.05 to $0.20; one on its own costs less.</p>
               </div>
-              <AsyncButton
-                className={hasDocs ? "" : "btn-primary"}
-                onClick={() => act(() => api(`/api/jobs/${id}/generate`, { method: "POST" }), "Resume and cover letter written")}
-                busyLabel="Writing, 30 to 90 seconds"
-              >
+              <AsyncButton className={hasDocs ? "" : "btn-primary"} onClick={() => write("both")} busyLabel="Writing, 30 to 90 seconds">
                 <PenLine size={15} aria-hidden /> {hasDocs ? "Rewrite both" : "Write both"}
               </AsyncButton>
             </div>
@@ -274,7 +292,11 @@ export default function JobPage() {
               <>
                 {job.doc_notes?.review_flags?.length ? (
                   <Alert tone="info">
-                    <b>Check before sending:</b> {job.doc_notes.review_flags.join(" ")}
+                    <b>
+                      Check before sending
+                      {job.doc_notes.scope === "resume" ? " (resume)" : job.doc_notes.scope === "cover" ? " (cover letter)" : ""}:
+                    </b>{" "}
+                    {job.doc_notes.review_flags.join(" ")}
                   </Alert>
                 ) : null}
                 {job.doc_notes?.emphasized?.length ? (
@@ -293,41 +315,55 @@ export default function JobPage() {
                 </div>
 
                 {doc === "resume" ? (
-                  <>
-                    <div className="row" style={{ marginBottom: 14, gap: 8 }}>
-                      <a className="btn btn-sm" href={`/api/jobs/${id}/pdf?doc=resume&download=1`}>
-                        <Download size={14} aria-hidden /> Download PDF
-                      </a>
-                      <a className="btn btn-sm" href={`/api/jobs/${id}/pdf?doc=resume`} target="_blank" rel="noreferrer">
-                        <ExternalLink size={14} aria-hidden /> Open PDF
-                      </a>
-                      <button className="btn-sm" onClick={() => copy(resumeToText(job.resume))}>
-                        <Copy size={14} aria-hidden /> Copy text
-                      </button>
-                    </div>
-                    <ResumeSheet r={job.resume} />
-                    <details style={{ marginTop: 16 }}>
-                      <summary>
-                        <ChevronRight size={15} aria-hidden /> Edit the resume data
-                      </summary>
-                      <textarea value={resumeJson} onChange={(e) => setResumeJson(e.target.value)} style={{ minHeight: 300, fontSize: 13 }} spellCheck={false} />
-                      <div className="row" style={{ marginTop: 8 }}>
-                        <AsyncButton
-                          className="btn-sm"
-                          onClick={() =>
-                            act(async () => {
-                              const parsed = JSON.parse(resumeJson);
-                              return api(`/api/jobs/${id}`, { method: "PATCH", json: { resume: parsed } });
-                            }, "Resume saved")
-                          }
-                        >
-                          Save resume
+                  hasResume ? (
+                    <>
+                      {resumeStale ? staleNotice("resume") : null}
+                      <div className="row" style={{ marginBottom: 14, gap: 8 }}>
+                        <a className="btn btn-sm" href={`/api/jobs/${id}/pdf?doc=resume&download=1`}>
+                          <Download size={14} aria-hidden /> Download PDF
+                        </a>
+                        <a className="btn btn-sm" href={`/api/jobs/${id}/pdf?doc=resume`} target="_blank" rel="noreferrer">
+                          <ExternalLink size={14} aria-hidden /> Open PDF
+                        </a>
+                        <button className="btn-sm" onClick={() => copy(resumeToText(job.resume))}>
+                          <Copy size={14} aria-hidden /> Copy text
+                        </button>
+                        <AsyncButton className={`btn-sm ${resumeStale ? "btn-primary" : ""}`} onClick={() => write("resume")} busyLabel="Rewriting, 30 to 60 seconds">
+                          <PenLine size={14} aria-hidden /> Rewrite resume
                         </AsyncButton>
                       </div>
-                    </details>
-                  </>
-                ) : (
+                      <ResumeSheet r={job.resume} />
+                      <details style={{ marginTop: 16 }}>
+                        <summary>
+                          <ChevronRight size={15} aria-hidden /> Edit the resume data
+                        </summary>
+                        <textarea value={resumeJson} onChange={(e) => setResumeJson(e.target.value)} style={{ minHeight: 300, fontSize: 13 }} spellCheck={false} />
+                        <div className="row" style={{ marginTop: 8 }}>
+                          <AsyncButton
+                            className="btn-sm"
+                            onClick={() =>
+                              act(async () => {
+                                const parsed = JSON.parse(resumeJson);
+                                return api(`/api/jobs/${id}`, { method: "PATCH", json: { resume: parsed } });
+                              }, "Resume saved")
+                            }
+                          >
+                            Save resume
+                          </AsyncButton>
+                        </div>
+                      </details>
+                    </>
+                  ) : (
+                    <div className="empty" style={{ padding: "32px 20px" }}>
+                      <p style={{ marginBottom: 14 }}>No tailored resume for this job yet.</p>
+                      <AsyncButton className="btn-primary" onClick={() => write("resume")} busyLabel="Writing, 30 to 60 seconds">
+                        <PenLine size={15} aria-hidden /> Write resume
+                      </AsyncButton>
+                    </div>
+                  )
+                ) : hasLetter ? (
                   <>
+                    {letterStale ? staleNotice("cover letter") : null}
                     <div className="row" style={{ marginBottom: 14, gap: 8 }}>
                       <a className="btn btn-sm" href={`/api/jobs/${id}/pdf?doc=cover&download=1`}>
                         <Download size={14} aria-hidden /> Download PDF
@@ -338,6 +374,9 @@ export default function JobPage() {
                       <button className="btn-sm" onClick={() => copy(letterText)}>
                         <Copy size={14} aria-hidden /> Copy text
                       </button>
+                      <AsyncButton className={`btn-sm ${letterStale ? "btn-primary" : ""}`} onClick={() => write("cover")} busyLabel="Rewriting, 20 to 40 seconds">
+                        <PenLine size={14} aria-hidden /> Rewrite cover letter
+                      </AsyncButton>
                     </div>
                     <textarea aria-label="Cover letter" value={letterText} onChange={(e) => setLetterText(e.target.value)} style={{ minHeight: 380, fontSize: 15 }} />
                     <div className="row between" style={{ marginTop: 10 }}>
@@ -362,6 +401,13 @@ export default function JobPage() {
                       </AsyncButton>
                     </div>
                   </>
+                ) : (
+                  <div className="empty" style={{ padding: "32px 20px" }}>
+                    <p style={{ marginBottom: 14 }}>No cover letter for this job yet.</p>
+                    <AsyncButton className="btn-primary" onClick={() => write("cover")} busyLabel="Writing, 20 to 40 seconds">
+                      <PenLine size={15} aria-hidden /> Write cover letter
+                    </AsyncButton>
+                  </div>
                 )}
               </>
             ) : null}
@@ -451,12 +497,16 @@ export default function JobPage() {
             )}
             {hasDocs ? (
               <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "nowrap" }}>
-                <a className="btn btn-sm" style={{ flex: 1 }} href={`/api/jobs/${id}/pdf?doc=resume&download=1`}>
-                  <Download size={14} aria-hidden /> Resume
-                </a>
-                <a className="btn btn-sm" style={{ flex: 1 }} href={`/api/jobs/${id}/pdf?doc=cover&download=1`}>
-                  <Download size={14} aria-hidden /> Letter
-                </a>
+                {hasResume ? (
+                  <a className="btn btn-sm" style={{ flex: 1 }} href={`/api/jobs/${id}/pdf?doc=resume&download=1`}>
+                    <Download size={14} aria-hidden /> Resume
+                  </a>
+                ) : null}
+                {hasLetter ? (
+                  <a className="btn btn-sm" style={{ flex: 1 }} href={`/api/jobs/${id}/pdf?doc=cover&download=1`}>
+                    <Download size={14} aria-hidden /> Letter
+                  </a>
+                ) : null}
               </div>
             ) : null}
           </section>

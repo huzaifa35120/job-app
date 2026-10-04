@@ -170,34 +170,70 @@ function profileForWriting(profile: Profile): string {
   }`;
 }
 
-export async function writeDocuments(job: JobRow, profile: Profile, settings: Settings, auto = false) {
-  const { data, cost } = await callClaudeJson(
-    {
-      category: "documents",
-      operation: "write_documents",
-      model: settings.models.documents,
-      jobId: job.id,
-      detail: `Resume + cover letter: ${job.title} at ${job.company}${auto ? " (auto)" : ""}`,
-      system: [
-        {
-          type: "text",
-          text: `${writingInstructions(profile)}\n\n${profileForWriting(profile)}`,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [{ role: "user", content: `<job>\n${jobForPrompt(job, 9000)}\n</job>\n\nWrite the tailored resume and cover letter for this job.` }],
-      maxTokens: 16000,
-      effort: "high",
-      expectedOutputTokens: 5000,
-    },
-    DocumentsSchema,
-  );
+const NotesSchema = z.object({ emphasized: z.array(z.string()), review_flags: z.array(z.string()) });
+const ResumeOnlySchema = z.object({ resume: TailoredResumeSchema, notes: NotesSchema });
+const CoverOnlySchema = z.object({ cover_letter: CoverLetterSchema, notes: NotesSchema });
+
+/** Which documents to (re)write: both, or just the resume, or just the cover letter. */
+export type DocPart = "both" | "resume" | "cover";
+
+export async function writeDocuments(job: JobRow, profile: Profile, settings: Settings, auto = false, part: DocPart = "both") {
+  const label = part === "both" ? "Resume + cover letter" : part === "resume" ? "Resume" : "Cover letter";
+  const task =
+    part === "both"
+      ? "Write the tailored resume and cover letter for this job."
+      : part === "resume"
+        ? "Write only the tailored resume for this job. Do not write a cover letter. Notes should cover the resume only."
+        : "Write only the cover letter for this job. Do not write a resume. Notes should cover the cover letter only.";
+  // A cover letter written on its own should agree with the resume that's already been sent.
+  const currentResume = part === "cover" && job.resume ? `\n\n<current_tailored_resume>\n${JSON.stringify(job.resume)}\n</current_tailored_resume>` : "";
+
+  const call = {
+    category: "documents" as const,
+    operation: part === "both" ? "write_documents" : part === "resume" ? "write_resume" : "write_cover_letter",
+    model: settings.models.documents,
+    jobId: job.id,
+    detail: `${label}: ${job.title} at ${job.company}${auto ? " (auto)" : ""}`,
+    system: [
+      {
+        type: "text" as const,
+        text: `${writingInstructions(profile)}\n\n${profileForWriting(profile)}`,
+        cache_control: { type: "ephemeral" as const },
+      },
+    ],
+    messages: [{ role: "user" as const, content: `<job>\n${jobForPrompt(job, 9000)}\n</job>${currentResume}\n\n${task}` }],
+    maxTokens: 16000,
+    effort: "high" as const,
+    expectedOutputTokens: part === "both" ? 5000 : part === "resume" ? 3500 : 1800,
+  };
+
+  let resume = job.resume;
+  let coverLetter = job.cover_letter;
+  let notes: z.infer<typeof NotesSchema>;
+  let cost: number;
+  if (part === "both") {
+    const r = await callClaudeJson(call, DocumentsSchema);
+    ({ resume, cover_letter: coverLetter, notes } = r.data);
+    cost = r.cost;
+  } else if (part === "resume") {
+    const r = await callClaudeJson(call, ResumeOnlySchema);
+    ({ resume, notes } = r.data);
+    cost = r.cost;
+  } else {
+    const r = await callClaudeJson(call, CoverOnlySchema);
+    ({ cover_letter: coverLetter, notes } = r.data);
+    cost = r.cost;
+  }
+
   await query(
-    `UPDATE jobs SET resume = $2::jsonb, cover_letter = $3::jsonb, doc_notes = $4::jsonb,
-            docs_generated_at = now(), docs_auto = $5 WHERE id = $1`,
-    [job.id, JSON.stringify(data.resume), JSON.stringify(data.cover_letter), JSON.stringify(data.notes), auto],
+    `UPDATE jobs SET resume = $2::jsonb, cover_letter = $3::jsonb, doc_notes = $4::jsonb, docs_generated_at = now(),
+            resume_at = CASE WHEN $5 IN ('both', 'resume') THEN now() ELSE COALESCE(resume_at, docs_generated_at) END,
+            cover_at = CASE WHEN $5 IN ('both', 'cover') THEN now() ELSE COALESCE(cover_at, docs_generated_at) END,
+            docs_auto = CASE WHEN $5 = 'both' THEN $6 ELSE docs_auto END
+     WHERE id = $1`,
+    [job.id, JSON.stringify(resume ?? null), JSON.stringify(coverLetter ?? null), JSON.stringify({ ...notes, scope: part }), part, auto],
   );
-  return { ...data, cost };
+  return { resume, cover_letter: coverLetter, notes, cost };
 }
 
 // ---------------------------------------------------------------- application questions

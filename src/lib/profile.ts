@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { kvGet, kvSet } from "./db";
+import { kvGet, kvSet, queryOne } from "./db";
 
 export const ExperienceSchema = z.object({
   title: z.string(),
@@ -89,6 +89,11 @@ export const EMPTY_PROFILE: Profile = {
 export async function getProfile(): Promise<Profile> {
   const stored = await kvGet<Partial<Profile>>("profile");
   return { ...EMPTY_PROFILE, ...(stored ?? {}), personal: { ...EMPTY_PROFILE.personal, ...(stored?.personal ?? {}) } };
+}
+
+export async function profileUpdatedAt(): Promise<string | null> {
+  const row = await queryOne<{ updated_at: string }>("SELECT updated_at FROM kv WHERE key = 'profile'");
+  return row ? new Date(row.updated_at).toISOString() : null;
 }
 
 export async function saveProfile(profile: Profile): Promise<Profile> {

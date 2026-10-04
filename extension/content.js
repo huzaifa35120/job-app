@@ -41,38 +41,70 @@
     return clean(copy.innerText || copy.textContent);
   }
 
+  const FIELD_SELECTOR = "input:not([type='hidden']):not([type='submit']):not([type='button']), textarea, select";
+
+  /**
+   * Text placed just before a control, for forms that don't link labels to inputs.
+   * Walks up from the control while its container holds only this one field, checking the
+   * elements before it at each level (a label sitting outside the input's own wrapper).
+   */
+  function nearbyText(el) {
+    let node = el;
+    for (let depth = 0; depth < 6 && node && node !== el.ownerDocument.body; depth++) {
+      for (let prev = node.previousElementSibling, i = 0; prev && i < 4; prev = prev.previousElementSibling, i++) {
+        if (prev.matches(FIELD_SELECTOR) || prev.querySelector(FIELD_SELECTOR)) break; // that's another field
+        const t = textOf(prev);
+        if (t && t.length <= 300) return t;
+      }
+      const parent = node.parentElement;
+      if (!parent || parent.querySelectorAll(FIELD_SELECTOR).length > 1) break;
+      node = parent;
+    }
+    return "";
+  }
+
+  const humanize = (s) =>
+    String(s || "")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_\-[\].]+/g, " ")
+      .trim();
+
   function rawLabel(el) {
-    const parts = [];
-    if (el.labels && el.labels.length) parts.push(textOf(el.labels[0]));
-    const labelledBy = el.getAttribute("aria-labelledby");
-    if (labelledBy) {
-      parts.push(
-        labelledBy
-          .split(/\s+/)
-          .map((id) => textOf(el.ownerDocument.getElementById(id)))
-          .join(" "),
-      );
+    const tries = [
+      () => (el.labels && el.labels.length ? textOf(el.labels[0]) : ""),
+      () => {
+        const ids = el.getAttribute("aria-labelledby");
+        return ids
+          ? ids
+              .split(/\s+/)
+              .map((id) => textOf(el.ownerDocument.getElementById(id)))
+              .join(" ")
+          : "";
+      },
+      () => el.getAttribute("aria-label") || "",
+      () => {
+        const wrap = el.closest("label");
+        return wrap ? textOf(wrap) : "";
+      },
+      () => nearbyText(el),
+      () => {
+        // Common ATS layouts: a question block with a label/heading inside it.
+        const block = el.closest(
+          ".field, .application-question, .form-group, .form-field, .question, li, [data-automation-id*='formField'], [class*='Field'], [class*='question']",
+        );
+        if (!block || block.querySelectorAll(FIELD_SELECTOR).length > 1) return "";
+        const lab = block.querySelector("label, legend, .application-label, .text, h3, h4, [class*='label'], [class*='Label']");
+        return lab && !lab.contains(el) ? textOf(lab) : "";
+      },
+      () => el.placeholder || "",
+      () => el.getAttribute("title") || "",
+      () => humanize(el.name || el.id || ""),
+    ];
+    for (const t of tries) {
+      const v = clean(t());
+      if (v) return v.slice(0, 400);
     }
-    if (el.getAttribute("aria-label")) parts.push(el.getAttribute("aria-label"));
-    if (!clean(parts.join(""))) {
-      const wrap = el.closest("label");
-      if (wrap) parts.push(textOf(wrap));
-    }
-    if (!clean(parts.join(""))) {
-      // Common ATS layouts: a question block with a label/heading above the control.
-      const block = el.closest(
-        ".field, .application-question, .form-group, .form-field, .question, li, [data-automation-id*='formField'], [class*='Field'], [class*='question']",
-      );
-      const lab = block && block.querySelector("label, legend, .application-label, .text, h3, h4, [class*='label'], [class*='Label']");
-      if (lab && !lab.contains(el)) parts.push(textOf(lab));
-    }
-    if (!clean(parts.join(""))) {
-      let prev = el.previousElementSibling;
-      for (let i = 0; i < 3 && prev && !clean(parts.join("")); i++, prev = prev.previousElementSibling) parts.push(textOf(prev));
-    }
-    if (!clean(parts.join("")) && el.placeholder) parts.push(el.placeholder);
-    if (!clean(parts.join(""))) parts.push((el.name || el.id || "").replace(/[_\-[\]]+/g, " "));
-    return clean(parts.join(" ")).slice(0, 400);
+    return "";
   }
 
   function groupQuestion(inputs) {
@@ -126,7 +158,10 @@
         const type = (el.type || "").toLowerCase();
         if (SKIP_TYPES.has(type)) return;
         if (type === "file") {
-          add({ el, kind: "file", label: rawLabel(el), options: [] });
+          const zone = el.closest("[class*='drop'], [class*='Drop'], [class*='upload'], [class*='Upload'], [role='button'], label") || el.parentElement;
+          // Upload boxes often say only "Upload file"; the question ("Resume *") sits just outside them.
+          const label = clean(`${rawLabel(el)} ${zone && zone !== el ? `${textOf(zone)} ${nearbyText(zone)}` : ""}`).slice(0, 400);
+          add({ el, kind: "file", label, options: [] });
           return;
         }
         if (type === "radio" || type === "checkbox") {
@@ -375,10 +410,12 @@
   }
 
   function fileKind(f, fileFields) {
-    const L = `${f.label} ${f.el.name || ""} ${f.el.id || ""}`.toLowerCase();
+    const L = `${f.label} ${f.el.name || ""} ${f.el.id || ""} ${f.el.accept || ""}`.toLowerCase();
     if (/cover/.test(L)) return "cover";
-    if (/resume|\bcv\b|curriculum/.test(L)) return "resume";
-    if (fileFields.length === 1) return "resume";
+    if (/resume|\bcv\b|curriculum|autofill/.test(L)) return "resume";
+    if (/photo|image|avatar|picture|transcript|portfolio/.test(L)) return null;
+    // Unlabelled uploads: the first one is almost always the resume.
+    if (fileFields.indexOf(f) === 0 && !fileFields.some((x) => /resume|\bcv\b/i.test(x.label))) return "resume";
     return null;
   }
 
@@ -796,7 +833,7 @@
 
       state.filledOnce = true;
       const parts = [`Filled ${filled} field${filled === 1 ? "" : "s"}.`];
-      if (attached.length) parts.push(`Attached your ${attached.join(" and ")}.`);
+      if (attached.length) parts.push(`Attached your ${[...new Set(attached)].join(" and ")}.`);
       if (aiCost) parts.push(`AI cost $${aiCost.toFixed(3)}.`);
       if (!state.review.length) parts.push("Nothing flagged. Read it over, then submit.");
       state.filling = false;

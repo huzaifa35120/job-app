@@ -243,6 +243,10 @@ input[type="file"]::file-selector-button { font: inherit; font-weight: 650; font
 .segmented button { height: 32px; border: 0; background: transparent; color: var(--ink-3); border-radius: 8px; padding: 0 13px; flex: none; }
 .segmented button:hover { background: rgba(255, 255, 255, 0.6); color: var(--ink); }
 .segmented button.on { background: var(--paper); color: var(--ink); box-shadow: 0 1px 2px rgba(27, 33, 48, 0.12); }
+.segmented.block { display: flex; width: 100%; }
+.segmented.block button { flex: 1; height: 36px; gap: 6px; }
+.segmented button:disabled { opacity: 1; cursor: default; }
+.segmented button.on.applied { color: var(--eucalyptus); }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
 .toolbar input, .toolbar select { width: auto; min-width: 170px; height: 38px; }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ArrowUpRight, ChevronRight, Clock, Copy, Download, ExternalLink, Globe, PenLine } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Clock, Copy, Download, ExternalLink, Globe, PenLine } from "lucide-react";
 import { Alert, AsyncButton, ErrorBox, JobFacts, Score, StatusBadge, sourceName } from "@/components/ui";
 import { api, shortDate, usd } from "@/lib/client";
 
@@ -196,6 +196,7 @@ export default function JobPage() {
   const hasResume = Boolean(job.resume);
   const hasLetter = Boolean(job.cover_letter);
   const hasDocs = hasResume || hasLetter;
+  const applied = ["applied", "interview", "offer", "rejected"].includes(job.status);
   // Your profile changed after this document was written, so it may be missing your updates.
   const profileAt = data.profileUpdatedAt ? Date.parse(data.profileUpdatedAt) : 0;
   const resumeAt = Date.parse(job.resume_at ?? job.docs_generated_at ?? "") || 0;
@@ -495,8 +496,32 @@ export default function JobPage() {
             ) : (
               <p className="small muted">No link saved for this job.</p>
             )}
+            <div className="segmented block" role="group" aria-label="Have you applied?" style={{ marginTop: 10 }}>
+              <button
+                className={applied ? "on applied" : ""}
+                aria-pressed={applied}
+                disabled={applied}
+                onClick={() => act(() => api(`/api/jobs/${id}`, { method: "PATCH", json: { status: "applied" } }), "Marked as applied")}
+              >
+                <Check size={15} aria-hidden /> Applied
+              </button>
+              <button
+                className={applied ? "" : "on"}
+                aria-pressed={!applied}
+                disabled={!applied}
+                onClick={() => act(() => api(`/api/jobs/${id}`, { method: "PATCH", json: { status: "new" } }), "Moved back to To review")}
+              >
+                Not applied yet
+              </button>
+            </div>
+            {applied && job.status_changed_at ? (
+              <p className="hint" style={{ textAlign: "center" }}>
+                {job.status === "applied" ? "Applied" : `Status: ${STATUSES.find((x) => x.id === job.status)?.label ?? job.status}`} since{" "}
+                {shortDate(job.status_changed_at)}
+              </p>
+            ) : null}
             {hasDocs ? (
-              <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: "nowrap" }}>
+              <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "nowrap" }}>
                 {hasResume ? (
                   <a className="btn btn-sm" style={{ flex: 1 }} href={`/api/jobs/${id}/pdf?doc=resume&download=1`}>
                     <Download size={14} aria-hidden /> Resume

@@ -296,6 +296,25 @@
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  function fileUrl(upload) {
+    const url = URL.createObjectURL(base64ToFile(upload.base64, upload.name));
+    setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+    return url;
+  }
+
+  function viewUpload(upload) {
+    if (!window.open(fileUrl(upload), "_blank")) downloadUpload(upload);
+  }
+
+  function downloadUpload(upload) {
+    const a = document.createElement("a");
+    a.href = fileUrl(upload);
+    a.download = upload.name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+  }
+
   function base64ToFile(b64, name) {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
@@ -372,6 +391,8 @@
     filledOnce: false,
     review: [],
     panel: null,
+    uploads: [], // files this panel attached: { kind, name, base64, tailored, company }
+    uploadsJobId: undefined,
   };
 
   const PANEL_CSS = `
@@ -404,6 +425,15 @@
     li { cursor: pointer; margin: 2px 0; }
     li:hover { text-decoration: underline; }
     .legend { display: flex; gap: 12px; font-size: 12px; color: #646c7d; }
+    .files { border: 1px solid #e3e6ec; border-radius: 10px; padding: 10px 11px; display: grid; gap: 9px; }
+    .files-title { font-size: 12.5px; font-weight: 700; color: #4a5263; }
+    .file { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+    .file-info { min-width: 0; display: grid; }
+    .file-info b { font-size: 13.5px; }
+    .file-info .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-actions { display: flex; gap: 6px; flex: none; }
+    button.mini { font: inherit; font-size: 12.5px; font-weight: 650; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid #cbd0d9; background: #fff; color: #1b2130; cursor: pointer; }
+    button.mini:hover { background: #f5f6f9; }
     .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
   `;
 
@@ -512,6 +542,42 @@
     );
 
     if (message) body.append(el("div", { class: `msg ${tone || ""}` }, message));
+
+    if (state.uploads.length) {
+      body.append(
+        el(
+          "div",
+          { class: "files" },
+          el("div", { class: "files-title" }, "Uploaded to this form"),
+          ...state.uploads.map((u) =>
+            el(
+              "div",
+              { class: "file" },
+              el(
+                "div",
+                { class: "file-info" },
+                el(
+                  "b",
+                  {},
+                  u.kind === "cover"
+                    ? `Cover letter${u.company ? ` for ${u.company}` : ""}`
+                    : u.tailored
+                      ? `Resume tailored${u.company ? ` for ${u.company}` : ""}`
+                      : "Resume (plain, not tailored)",
+                ),
+                el("span", { class: "muted", title: u.name }, u.name),
+              ),
+              el(
+                "div",
+                { class: "file-actions" },
+                el("button", { class: "mini", title: "Open the uploaded file", onclick: () => viewUpload(u) }, "View"),
+                el("button", { class: "mini", title: "Save a copy", onclick: () => downloadUpload(u) }, "Download"),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     if (state.review.length) {
       body.append(
@@ -624,8 +690,11 @@
       let fields = collectFields();
       const fileFields = fields.filter((f) => f.kind === "file");
       let attached = [];
+      const jobKey = state.jobId || 0;
+      const switchedJob = state.uploadsJobId !== undefined && state.uploadsJobId !== jobKey;
+      const company = (state.ctx.candidates.find((j) => j.id === state.jobId) || state.ctx.job || {}).company || "";
       for (const f of fileFields) {
-        if (isFilled(f)) continue;
+        if (isFilled(f) && !switchedJob) continue;
         const which = fileKind(f, fileFields);
         const doc = which === "cover" ? files.cover : which === "resume" ? files.resume : null;
         if (!doc) continue;
@@ -633,6 +702,9 @@
           attachFile(f.el, base64ToFile(doc.base64, doc.name));
           mark(f, "filled");
           attached.push(which === "cover" ? "cover letter" : files.tailored ? "tailored resume" : "resume");
+          state.uploads = state.uploads.filter((u) => u.kind !== which);
+          state.uploads.push({ kind: which, name: doc.name, base64: doc.base64, tailored: which === "cover" || files.tailored, company });
+          state.uploadsJobId = jobKey;
           filled++;
         } catch {
           state.review.push({ el: f.el, label: f.label || "File upload", note: "attach it yourself" });
@@ -644,6 +716,7 @@
       // 2. Straight from your profile (free).
       fields = collectFields();
       const flagged = new Set();
+      const typed = [];
       for (const f of fields) {
         if (f.kind === "file" || isFilled(f)) continue;
         const v = ruleValue(f, helper);
@@ -651,6 +724,7 @@
         if (v) {
           setNativeValue(f.el, v);
           mark(f, "filled");
+          typed.push(f);
           filled++;
         } else {
           flagged.add(f.el);
@@ -692,12 +766,24 @@
               ok = true;
             }
           }
-          if (ok) filled++;
+          if (ok) {
+            filled++;
+            if (f.kind !== "radio" && f.kind !== "checkbox") typed.push(f);
+          }
           if (!ok || a.needs_review) {
             mark(f, "review");
             state.review.push({ el: f.el, label: f.label || "Question", note: a.note || (ok ? "" : "needs your answer") });
           } else mark(f, "filled");
         }
+      }
+
+      // Some sites (location pickers, autocompletes) clear typed text unless you pick from their list.
+      await sleep(700);
+      for (const f of typed) {
+        if (!f.el.isConnected || isFilled(f) || state.review.some((r) => r.el === f.el)) continue;
+        filled--;
+        mark(f, "review");
+        state.review.push({ el: f.el, label: f.label || "Field", note: "the site cleared it; type it and pick from its list" });
       }
 
       // Required fields still empty

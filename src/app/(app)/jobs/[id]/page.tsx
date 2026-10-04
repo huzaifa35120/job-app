@@ -443,7 +443,7 @@ export default function JobPage() {
         <aside className="rail">
           <section className="panel" aria-label="Apply">
             {job.url ? (
-              <a className="btn btn-primary btn-block" href={job.url} target="_blank" rel="noreferrer" style={{ height: 44 }}>
+              <a className="btn btn-primary btn-block" href={`/api/jobs/${id}/open`} target="_blank" rel="noreferrer" style={{ height: 44 }}>
                 Apply on the job site <ArrowUpRight size={16} aria-hidden />
               </a>
             ) : (

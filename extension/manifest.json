@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Auto Job Apply",
+  "version": "1.0.0",
+  "description": "Fills job application forms with your Auto Job Apply profile, tailored resume and cover letter. You review and submit.",
+  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "action": { "default_popup": "popup.html", "default_title": "Auto Job Apply", "default_icon": { "16": "icons/16.png", "48": "icons/48.png" } },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://*.vercel.app/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.greenhouse.io/*",
+        "https://jobs.lever.co/*",
+        "https://jobs.eu.lever.co/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.myworkdaysite.com/*",
+        "https://jobs.smartrecruiters.com/*",
+        "https://apply.workable.com/*",
+        "https://*.bamboohr.com/*",
+        "https://*.recruitee.com/*",
+        "https://*.teamtailor.com/*",
+        "https://*.breezy.hr/*",
+        "https://*.jobvite.com/*",
+        "https://*.icims.com/*",
+        "https://*.successfactors.com/*",
+        "https://*.successfactors.eu/*",
+        "https://*.pageuppeople.com/*",
+        "https://*.livehire.com/*",
+        "https://*.applynow.net.au/*",
+        "https://*.dayforcehcm.com/*",
+        "https://*.oraclecloud.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

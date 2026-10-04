@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
-// Everything requires login except the login page/API and the cron endpoints (which check CRON_SECRET).
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/cron/"];
+// Everything requires login except the login page/API, the cron endpoints (which check CRON_SECRET)
+// and the Chrome extension API (which checks its own bearer token).
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/cron/", "/api/ext/"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

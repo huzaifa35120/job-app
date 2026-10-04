@@ -364,7 +364,7 @@ export function JobRow({
           </Link>
         )}
         {job.url ? (
-          <a className={`btn btn-sm ${feature || docs ? "btn-primary" : ""}`} href={job.url} target="_blank" rel="noreferrer">
+          <a className={`btn btn-sm ${feature || docs ? "btn-primary" : ""}`} href={`/api/jobs/${job.id}/open`} target="_blank" rel="noreferrer">
             Apply <ArrowUpRight size={14} aria-hidden />
           </a>
         ) : null}

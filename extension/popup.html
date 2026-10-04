@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <title>Auto Job Apply</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark"><img src="icons/48.png" alt="" /></span>
+      <span class="title">Auto Job Apply</span>
+    </header>
+
+    <form id="login" hidden>
+      <p class="lede">Connect to your Auto Job Apply app. Your password isn't stored; the extension keeps a login that lasts 90 days.</p>
+      <label for="appUrl">App address</label>
+      <input id="appUrl" type="url" placeholder="https://job-app-xxxx.vercel.app" required />
+      <label for="username">Username</label>
+      <input id="username" type="text" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <button type="submit" class="primary">Connect</button>
+      <p id="loginMsg" class="msg" role="status"></p>
+    </form>
+
+    <section id="connected" hidden>
+      <p class="lede">Connected as <b id="who"></b> to <span id="where"></span>.</p>
+      <button id="fill" class="primary">Fill the form on this page</button>
+      <label class="check"><input id="autoFill" type="checkbox" /> Fill automatically on job sites when the job is in my list</label>
+      <p class="hint">
+        It opens by itself on Greenhouse, Lever, Ashby, Workday, SmartRecruiters, PageUp, LiveHire and similar sites. On any other site,
+        use the button above. It never presses Submit.
+      </p>
+      <p id="msg" class="msg" role="status"></p>
+      <div class="row">
+        <a id="openApp" href="#" target="_blank">Open the app</a>
+        <button id="logout" class="link">Disconnect</button>
+      </div>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

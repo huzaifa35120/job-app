@@ -62,6 +62,23 @@ Open http://localhost:3000 and log in. Locally it uses a built-in database store
 
 Vercel's free Hobby plan is enough. It allows functions up to 5 minutes and cron jobs once a day, and the app is built around both.
 
+## Chrome extension: fill application forms
+
+The `extension/` folder is a Chrome extension that connects to your app and fills job application forms for you. It never presses Submit.
+
+1. In Chrome, open `chrome://extensions` and turn on **Developer mode**.
+2. Click **Load unpacked** and select the `extension` folder.
+3. Click the extension icon. Enter your app address (for example `https://job-app-xxxx.vercel.app`), your username and your password, then click **Connect**. The extension keeps a 90-day login token, not your password.
+
+How to use it:
+- In the app, click **Apply** on a job. When the company's form opens, the extension recognises the job, attaches that job's **tailored resume and cover letter**, and fills your details.
+- On Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable, PageUp, LiveHire and similar sites it opens and fills by itself. Anywhere else, click the icon and choose **Fill the form on this page**.
+- Fields come straight from your profile (free). The AI answers the rest, such as dropdowns, yes/no questions and short answers, under your **Application answers** limit, usually a few cents per form.
+- Green outline means filled. Amber means check it: anything your profile doesn't cover, consent boxes, and required fields still empty.
+- After you submit, click **I've submitted it. Mark as applied** to update the job's status.
+
+Logins on job sites (Workday accounts and similar) are left to Chrome's password manager; the extension never stores or types those passwords. It can't get past CAPTCHAs, and Workday's custom dropdowns sometimes need a manual click.
+
 ## Costs and limits
 
 - Costs are calculated from the exact token counts Anthropic returns, at list prices (`src/lib/pricing.ts`).
@@ -84,4 +101,6 @@ src/lib/usage.ts         spend tracking, daily limits, stats
 src/lib/pdf.tsx          resume + cover letter PDFs
 src/app/api/             API routes (cron jobs in api/cron)
 src/app/(app)/           pages
+src/app/api/ext/         API for the Chrome extension (bearer-token auth)
+extension/               the Chrome extension (load unpacked)
 ```

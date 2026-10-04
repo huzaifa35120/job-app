@@ -33,6 +33,49 @@ export function route<C = unknown>(fn: Handler<C>) {
   };
 }
 
+// ------------------------------------------------------------------ Chrome extension API
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin") ?? "";
+  if (!origin.startsWith("chrome-extension://")) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Max-Age": "600",
+    Vary: "Origin",
+  };
+}
+
+function withCors(res: Response, req: Request): Response {
+  for (const [k, v] of Object.entries(corsHeaders(req))) res.headers.set(k, v);
+  return res;
+}
+
+/** Wraps an extension route: requires `Authorization: Bearer <extension token>`, adds CORS for chrome-extension:// origins. */
+export function extRoute<C = unknown>(fn: Handler<C>, opts: { public?: boolean } = {}) {
+  return async (req: Request, ctx: C) => {
+    try {
+      if (!opts.public) {
+        const { verifyExtensionToken } = await import("./session");
+        const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+        if (!(await verifyExtensionToken(token))) {
+          return withCors(NextResponse.json({ error: "The extension isn't connected. Log in again from the extension popup." }, { status: 401 }), req);
+        }
+      }
+      const result = await fn(req, ctx);
+      return withCors(result instanceof Response ? result : NextResponse.json(result ?? { ok: true }), req);
+    } catch (err) {
+      return withCors(errorResponse(err), req);
+    }
+  };
+}
+
+/** CORS preflight for extension routes. */
+export function extOptions() {
+  return async (req: Request) => withCors(new Response(null, { status: 204 }), req);
+}
+
 /** For Vercel Cron: requires `Authorization: Bearer $CRON_SECRET`. */
 export function cronRoute(fn: () => Promise<unknown>) {
   return async (req: Request) => {

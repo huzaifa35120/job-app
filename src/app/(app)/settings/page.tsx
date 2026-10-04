@@ -336,6 +336,33 @@ export default function SettingsPage() {
         </div>
       </Section>
 
+      <Section
+        title="Chrome extension"
+        desc="Fills job application forms with your details, tailored resume and cover letter. You review and submit."
+      >
+        <ol className="small" style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+          <li>
+            In Chrome, open <b>chrome://extensions</b> and turn on <b>Developer mode</b> (top right).
+          </li>
+          <li>
+            Click <b>Load unpacked</b> and choose the <b>extension</b> folder inside your Auto Job Apply project.
+          </li>
+          <li>Pin it from the puzzle-piece menu, click its icon, and connect with this address and your app login:</li>
+        </ol>
+        <div className="row" style={{ marginTop: 12 }}>
+          <input type="text" readOnly value={typeof window === "undefined" ? "" : window.location.origin} aria-label="App address" style={{ maxWidth: 360 }} />
+          <button className="btn-sm" onClick={() => navigator.clipboard.writeText(window.location.origin)}>
+            Copy address
+          </button>
+        </div>
+        <p className="hint">
+          On Greenhouse, Lever, Ashby, Workday, SmartRecruiters, PageUp and similar sites it fills the form by itself when the job is
+          in your list (open it with Apply here first). On other sites, click the extension and choose Fill the form on this page. It
+          never presses Submit. Questions it can&apos;t answer from your profile use the Application answers limit, usually a few cents
+          per form.
+        </p>
+      </Section>
+
       <Section title="Connections" desc="Set in .env.local on your computer, or in Vercel's environment variables once it's online.">
         <ul className="checklist">
           {connections.map((c) => (

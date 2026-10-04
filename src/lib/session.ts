@@ -26,22 +26,41 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-export async function createSessionToken(username: string): Promise<string> {
-  const payload = b64url(encoder.encode(JSON.stringify({ u: username, exp: Date.now() + SESSION_DAYS * 86_400_000 })));
+export const EXTENSION_TOKEN_DAYS = 90;
+
+async function createToken(claims: Record<string, unknown>, days: number): Promise<string> {
+  const payload = b64url(encoder.encode(JSON.stringify({ ...claims, exp: Date.now() + days * 86_400_000 })));
   return `${payload}.${await hmac(payload)}`;
 }
 
-export async function verifySessionToken(token: string | undefined | null): Promise<boolean> {
+async function verifyToken(token: string | undefined | null, typ: string | undefined): Promise<boolean> {
   if (!token) return false;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return false;
   try {
     if (!safeEqual(sig, await hmac(payload))) return false;
     const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof json.exp === "number" && json.exp > Date.now() && json.u === process.env.APP_USERNAME;
+    return typeof json.exp === "number" && json.exp > Date.now() && json.u === process.env.APP_USERNAME && json.typ === typ;
   } catch {
     return false;
   }
+}
+
+export function createSessionToken(username: string): Promise<string> {
+  return createToken({ u: username }, SESSION_DAYS);
+}
+
+export function verifySessionToken(token: string | undefined | null): Promise<boolean> {
+  return verifyToken(token, undefined);
+}
+
+/** Bearer token for the Chrome extension (sent in the Authorization header, never as a cookie). */
+export function createExtensionToken(username: string): Promise<string> {
+  return createToken({ u: username, typ: "ext" }, EXTENSION_TOKEN_DAYS);
+}
+
+export function verifyExtensionToken(token: string | undefined | null): Promise<boolean> {
+  return verifyToken(token, "ext");
 }
 
 /** Constant-time comparison of submitted credentials against APP_USERNAME / APP_PASSWORD. */

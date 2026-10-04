@@ -285,3 +285,100 @@ export async function importResume(
   );
   return { profile: data, cost };
 }
+
+// ---------------------------------------------------------------- filling an application form (Chrome extension)
+
+export interface FormField {
+  id: string;
+  label: string;
+  kind: string;
+  options: string[];
+  required: boolean;
+  maxLength: number | null;
+}
+
+const FormAnswers = z.object({
+  fields: z.array(
+    z.object({
+      id: z.string(),
+      values: z.array(z.string()),
+      needs_review: z.boolean(),
+      note: z.string(),
+    }),
+  ),
+});
+
+/** Decides what to put in the form fields the extension couldn't fill from simple rules. */
+export async function answerFormFields(
+  input: {
+    job: JobRow | null;
+    page: { url: string; title: string };
+    fields: FormField[];
+    coverLetter: string;
+  },
+  profile: Profile,
+  settings: Settings,
+) {
+  const fields = input.fields.slice(0, 60);
+  const fieldList = fields
+    .map((f) =>
+      [
+        `<field id="${f.id}" kind="${f.kind}"${f.required ? " required" : ""}${f.maxLength ? ` max_chars="${f.maxLength}"` : ""}>`,
+        `Label: ${f.label.slice(0, 400)}`,
+        f.options.length ? `Options: ${f.options.slice(0, 60).map((o) => JSON.stringify(o)).join(", ")}` : "",
+        "</field>",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n");
+
+  const { data, cost } = await callClaudeJson(
+    {
+      category: "apply",
+      operation: "fill_form",
+      model: settings.models.apply,
+      jobId: input.job?.id ?? null,
+      detail: `Filled application form: ${input.job ? `${input.job.title} at ${input.job.company}` : input.page.title.slice(0, 80)}`,
+      system: [
+        {
+          type: "text",
+          text: `You fill in job application form fields for the candidate below, using only facts from their profile.
+
+Rules:
+- Return one entry per field id, in any order.
+- select / radio / combobox: every value must be copied exactly from that field's options. If nothing fits, return no values and set needs_review.
+- checkbox: return the option texts to tick (can be several). Never tick consent, declaration, privacy, terms or "I confirm" boxes: return no values and set needs_review.
+- Work rights, visa and sponsorship questions: answer only from the profile's work rights. If the profile doesn't say, return no values and set needs_review.
+- Gender, ethnicity, Aboriginal or Torres Strait Islander status, disability, veteran and other demographic questions: pick the "prefer not to say" / "decline to answer" option if there is one; otherwise return no values and set needs_review.
+- Free-text questions: answer specifically and truthfully from the profile, in the candidate's voice, within any character limit. Never invent experience, employers, numbers, referees or qualifications.
+- Anything the profile can't answer (referee names, ID numbers, exact dates not in the profile, how they heard about the job): return no values and set needs_review, with a short note saying what's needed.
+- Set needs_review for any answer you're unsure about. note: under 15 words, empty if nothing to say.
+- Use Australian English spelling.
+- Never use these words or phrases: ${profile.bannedPhrases.join(", ") || "(none)"}.
+
+${profileForWriting(profile)}`,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [
+        {
+          role: "user",
+          content: [
+            input.job ? `<job>\n${jobForPrompt(input.job, 4000)}\n</job>` : `<page>\nTitle: ${input.page.title}\nURL: ${input.page.url}\n</page>`,
+            input.coverLetter ? `<cover_letter_already_written>\n${input.coverLetter.slice(0, 4000)}\n</cover_letter_already_written>` : "",
+            `<form_fields>\n${fieldList}\n</form_fields>`,
+            "Fill in these fields.",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      ],
+      maxTokens: 8000,
+      effort: "low",
+      expectedOutputTokens: 120 * fields.length + 300,
+    },
+    FormAnswers,
+  );
+  return { fields: data.fields, cost };
+}
